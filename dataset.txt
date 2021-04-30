@@ -1,0 +1,2 @@
+http://www.b3.com.br/pt_br/market-data-e-indices/servicos-de-dados/market-data/historico/mercado-a-vista/series-historicas/
+https://api.worldbank.org/v2/en/country/BRA?downloadformat=csv
