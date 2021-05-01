@@ -16,8 +16,14 @@ def create_spark_session():
     spark = SparkSession \
         .builder \
         .config('spark.sql.execution.arrow.pyspark.enabled', "true") \
+        .config('spark.sql.execution.arrow.pyspark.enabled', "true") \
         .enableHiveSupport() \
         .getOrCreate()
+
+    sc = spark.sparkContext
+    sc._jsc.hadoopConfiguration().set("fs.s3a.access.key", os.environ['AWS_ACCESS_KEY_ID'])
+    sc._jsc.hadoopConfiguration().set("fs.s3a.secret.key", os.environ['AWS_SECRET_ACCESS_KEY'])
+
     return spark
 
 
@@ -72,14 +78,14 @@ def main():
     # input_data = "s3://capstone-data-1/"
     output_data = "s3://capstone-data-1/"
 
-    trading_files = "sample_data/COTAHIST_2013.txt"
+    trading_files = "sample_data/COTAHIST_A2013.txt"
 
     economy_df = process_economy_data(spark, output_data)
 
     trading_df = process_trading_data(spark, trading_files, output_data)
 
-    quality_check(economy_df)
-    quality_check(trading_df)
+    quality_check(economy_df, 'economy')
+    quality_check(trading_df, 'trading')
 
 
 if __name__ == "__main__":

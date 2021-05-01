@@ -12,7 +12,7 @@ def create_economy_table(df, output_data):
     :return: spark dataframe representing economy dimension
     """
 
-    df.write.parquet(output_data + "economy_fact", mode="overwrite")
+    df.write.parquet(output_data + "economy_fact", mode="overwrite", compression='gzip')
 
     return df
 
@@ -24,7 +24,7 @@ def create_trading_table(df, output_data):
     :return: spark dataframe.
     """
 
-    df.write.parquet(output_data + "trading", mode="overwrite")
+    df.write.parquet(output_data + "trading", mode="overwrite", compression='gzip')
 
     return df
 
@@ -64,8 +64,8 @@ def raw_trading_to_pandas(raw_df):
     :param raw_df: (spark dataframe)
     :return: pandas dataframe
     """
-
-    raw_df['dict'] = raw_df.toPandas()['value'].apply(lambda x: record_to_dict(x))
+    raw_df = raw_df.toPandas()
+    raw_df['dict'] = raw_df['value'].apply(lambda x: record_to_dict(x))
     return raw_df['dict'].apply(pd.Series).replace('', None)
 
 
