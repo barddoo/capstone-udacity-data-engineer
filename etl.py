@@ -97,6 +97,7 @@ def main():
     quality_check(trading_df, 'trading')
     quality_check(trading_df, 'stock_code')
     quality_check(trading_df, 'date')
+    quality_check(trading_df, 'volume')
     quality_check(economy_df, 'table')
     quality_check(economy_df, 'year')
 

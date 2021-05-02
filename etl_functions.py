@@ -71,7 +71,7 @@ def raw_trading_to_pandas(raw_df):
     raw_df = raw_df['dict'].apply(pd.Series)
     raw_df.replace(r"^\s*$", float("NaN"), regex=True, inplace=True)
     raw_df['money_volume'] = pd.to_numeric(raw_df['money_volume'], errors='coerce')
-    raw_df['volume'] = pd.to_numeric(raw_df['volume'], errors='coerce', downcast='integer')
+    raw_df['volume'] = pd.to_numeric(raw_df['volume'], errors='coerce')
     raw_df['variation'] = (raw_df['price_close'] / raw_df['price_open']) / 100
     return raw_df.dropna()
 
