@@ -1,7 +1,9 @@
+import os.path
+
 import bovespa
 import pandas as pd
 import wbgapi as wb
-from pyspark.sql.types import *
+from pyspark.sql.types import StructType, StructField, StringType, DateType, IntegerType, DoubleType
 
 
 def create_economy_table(df, output_data):
@@ -12,7 +14,7 @@ def create_economy_table(df, output_data):
     :return: spark dataframe representing economy dimension
     """
 
-    df.write.parquet(output_data + "economy_fact", mode="overwrite", compression='gzip')
+    df.write.parquet(os.path.join(output_data, "economy_fact"), mode="overwrite", compression='gzip')
 
     return df
 
@@ -24,7 +26,7 @@ def create_trading_table(df, output_data):
     :return: spark dataframe.
     """
 
-    df.write.parquet(output_data + "trading", mode="overwrite", compression='gzip')
+    df.write.parquet(os.path.join(output_data, "trading"), mode="overwrite", compression='gzip')
 
     return df
 
@@ -66,7 +68,12 @@ def raw_trading_to_pandas(raw_df):
     """
     raw_df = raw_df.toPandas()
     raw_df['dict'] = raw_df['value'].apply(lambda x: record_to_dict(x))
-    return raw_df['dict'].apply(pd.Series).replace('', None)
+    raw_df = raw_df['dict'].apply(pd.Series)
+    raw_df.replace(r"^\s*$", float("NaN"), regex=True, inplace=True)
+    raw_df['money_volume'] = pd.to_numeric(raw_df['money_volume'], errors='coerce')
+    raw_df['volume'] = pd.to_numeric(raw_df['volume'], errors='coerce', downcast='integer')
+    raw_df['variation'] = (raw_df['price_close'] / raw_df['price_open']) / 100
+    return raw_df.dropna()
 
 
 def trading_pandas_to_spark(spark, pd_df):
@@ -81,18 +88,18 @@ def trading_pandas_to_spark(spark, pd_df):
         StructField('year', IntegerType(), True),
         StructField('month', IntegerType(), True),
         StructField('day', IntegerType(), True),
-        StructField('money_volume', FloatType(), True),
+        StructField('money_volume', DoubleType(), True),
         StructField('volume', IntegerType(), True),
         StructField('stock_code', StringType(), True),
         StructField('company_name', StringType(), True),
-        StructField('price_open', FloatType(), True),
-        StructField('price_close', FloatType(), True),
-        StructField('price_mean', FloatType(), True),
-        StructField('price_high', FloatType(), True),
-        StructField('price_low', FloatType(), True),
-        StructField('variation', FloatType(), True)
+        StructField('price_open', DoubleType(), True),
+        StructField('price_close', DoubleType(), True),
+        StructField('price_mean', DoubleType(), True),
+        StructField('price_high', DoubleType(), True),
+        StructField('price_low', DoubleType(), True),
+        StructField('variation', DoubleType(), True)
     ])
-    return spark.createDataFrame(pd_df, schema=schema)
+    return spark.createDataFrame(pd_df, schema=schema, verifySchema=False)
 
 
 def record_to_dict(record):
@@ -112,7 +119,7 @@ def record_to_dict(record):
         'stock_code': record.stock_code, 'company_name': record.company_name,
         'price_open': record.price_open, 'price_close': record.price_close,
         'price_mean': record.price_mean, 'price_high': record.price_high,
-        'price_low': record.price_low, 'variation': None
+        'price_low': record.price_low
     }
 
 
