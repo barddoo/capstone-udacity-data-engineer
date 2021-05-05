@@ -1,9 +1,41 @@
 import os.path
 
 import bovespa
-import pandas as pd
 import wbgapi as wb
-from pyspark.sql.types import StructType, StructField, StringType, DateType, IntegerType, DoubleType
+from pyspark.sql import functions as F
+from pyspark.sql.types import StructType, StructField, StringType, IntegerType, DateType, DoubleType
+
+trading_schema = StructType([
+    StructField('date', DateType(), True),
+    StructField('year', IntegerType(), True),
+    StructField('month', IntegerType(), True),
+    StructField('day', IntegerType(), True),
+    StructField('money_volume', DoubleType(), True),
+    StructField('volume', IntegerType(), True),
+    StructField('stock_code', StringType(), True),
+    StructField('company_name', StringType(), True),
+    StructField('price_open', DoubleType(), True),
+    StructField('price_close', DoubleType(), True),
+    StructField('price_mean', DoubleType(), True),
+    StructField('price_high', DoubleType(), True),
+    StructField('price_low', DoubleType(), True),
+    StructField('variation', DoubleType(), True)
+])
+
+economy_schema = {
+    'GC.DOD.TOTL.GD.ZS': 'debt',
+    'GC.XPN.TOTL.CN': 'total_expense',
+    'NY.GDP.MKTP.KD.ZG': 'gdp_growth',
+    'NY.GDP.MKTP.CD': 'gdp',
+    'NY.GDP.PCAP.CD': 'gdp_per_capita',
+    'SP.POP.TOTL': 'population',
+    'SP.DYN.LE00.IN': 'life_expectancy',
+    'GC.XPN.TOTL.GD.ZS': 'expense_per_gdp',
+    'FI.RES.TOTL.CD': 'total_reserves',
+    'SE.ADT.LITR.ZS': 'pop_literacy_rate',
+    'SE.XPD.TOTL.GD.ZS': 'expenditure_education_per_gdp',
+    'BX.KLT.DINV.CD.WD': 'foreign_investment'
+}
 
 
 def create_economy_table(df, output_data):
@@ -31,77 +63,61 @@ def create_trading_table(df, output_data):
     return df
 
 
-def create_economy_pandas():
+def create_economy_df():
     """
     Load data from world bank
     :return: pandas dataframe representing economy table
     """
-    metric_to_schema = {
-        'GC.DOD.TOTL.GD.ZS': 'debt',
-        'GC.XPN.TOTL.CN': 'total_expense',
-        'NY.GDP.MKTP.KD.ZG': 'gdp_annual_growth',
-        'NY.GDP.MKTP.CD': 'gdp',
-        'NY.GDP.PCAP.CD': 'gdp_per_capita',
-        'SP.POP.TOTL': 'population',
-        'SP.DYN.LE00.IN': 'life_expectancy',
-        'GC.XPN.TOTL.GD.ZS': 'expense_per_gdp',
-        'FI.RES.TOTL.CD': 'total_reserves',
-        'SE.ADT.LITR.ZS': 'pop_literacy_rate',
-        'SE.XPD.TOTL.GD.ZS': 'expenditure_education_per_gdp',
-        'BX.KLT.DINV.CD.WD': 'foreign_investment',
-    }
-    country = 'BRA'
-    values = []
-    for key, value in metric_to_schema.items():
-        df = wb.data.DataFrame(key, economy=country, columns='time', numericTimeKeys=True).dropna(axis=1, how='all')
-        for data in df.items():
-            values.append((data[0], value, data[1][country]))
-    return pd.DataFrame(data=values, columns=['year', 'table', 'value'])
+    economy_data = get_economy_data_api()
+    economy_data = make_year_column(economy_data)
+    return economy_data
 
 
-def raw_trading_to_pandas(raw_df):
+def make_year_column(economy_data):
+    """
+    Make year column
+    :param economy_data: pandas economy data
+    :return: dataframe with year column
+    """
+    years = list(economy_data.columns)
+    economy_data = economy_data.transpose()
+    economy_data['year'] = years
+    return economy_data
+
+
+def get_economy_data_api():
+    """
+    Get economy data from World Bank API
+    :return: economy data
+    """
+
+    df_raw = wb.data.DataFrame(economy_schema.keys(), economy='BRA', numericTimeKeys=True)
+    return df_raw.rename(economy_schema, axis=0)
+
+
+def raw_trading_to_spark(raw_df):
     """
     Convert dataframe to pandas, transform position string into bovespa.Record, transform it into a dict then
     explode the columns to the schema.
     :param raw_df: (spark dataframe)
     :return: pandas dataframe
     """
-    raw_df = raw_df.toPandas()
-    raw_df['dict'] = raw_df['value'].apply(lambda x: record_to_dict(x))
-    raw_df = raw_df['dict'].apply(pd.Series)
-    raw_df.replace(r"^\s*$", float("NaN"), regex=True, inplace=True)
-    raw_df['money_volume'] = pd.to_numeric(raw_df['money_volume'], errors='coerce')
-    raw_df['volume'] = pd.to_numeric(raw_df['volume'], errors='coerce')
-    raw_df['variation'] = (raw_df['price_close'] / raw_df['price_open']) / 100
-    return raw_df.dropna()
+    dict_df = raw_df.select(record_to_dict('value').alias('dict'))
+    dict_df = dict_df.select("dict.*", "*").drop('dict')
+    return dict_df.dropna()
 
 
-def trading_pandas_to_spark(spark, pd_df):
+def trading_columns(trading_df):
     """
-    Load pandas dataframe into spark.
-    :param spark: sparkSession
-    :param pd_df: pandas dataframe
-    :return: spark dataframe with schema.
+    Make dimension columns
+    :param trading_df: trading dataframe
+    :return dataframe with new columns
     """
-    schema = StructType([
-        StructField('date', DateType(), True),
-        StructField('year', IntegerType(), True),
-        StructField('month', IntegerType(), True),
-        StructField('day', IntegerType(), True),
-        StructField('money_volume', DoubleType(), True),
-        StructField('volume', IntegerType(), True),
-        StructField('stock_code', StringType(), True),
-        StructField('company_name', StringType(), True),
-        StructField('price_open', DoubleType(), True),
-        StructField('price_close', DoubleType(), True),
-        StructField('price_mean', DoubleType(), True),
-        StructField('price_high', DoubleType(), True),
-        StructField('price_low', DoubleType(), True),
-        StructField('variation', DoubleType(), True)
-    ])
-    return spark.createDataFrame(pd_df, schema=schema, verifySchema=False)
+
+    return trading_df.withColumn('variation', (trading_df['price_close'] - trading_df['price_open']) / 100)
 
 
+@F.udf(returnType=trading_schema)
 def record_to_dict(record):
     """
     Transform string into bovespa.Record
@@ -124,16 +140,31 @@ def record_to_dict(record):
 
 
 # Perform quality checks here
-def quality_checks(df, table_name):
-    """Count checks on fact and dimension table to ensure completeness of data.
-    :param df: spark dataframe to check counts on
-    :param table_name: corresponding name of table
+def quality_check(df_check, name):
+    """
+    Count checks on table to ensure completeness of data.
+    :param df_check: spark dataframe to check counts on
+    :param name: name of the dataframe
     """
 
-    total_count = df.count()
+    total_count = df_check.count()
 
     if total_count == 0:
-        print(f"Data quality check failed for {table_name} with zero records!")
+        print(f"Data quality check failed for {name} with zero records!")
     else:
-        print(f"Data quality check passed for {table_name} with {total_count:,} records.")
-    return 0
+        print(f"Data quality check passed for {name} with {total_count} records.")
+
+
+def quality_check_column(df_check, column):
+    """
+    Count checks on table to ensure completeness of data.
+    :param df_check: spark dataframe to check counts on
+    :param column: name of the column
+    """
+
+    total_count = df_check.where(df_check[column].isNotNull()).count()
+
+    if total_count == 0:
+        print(f"Data quality check failed for table {column} with zero records!")
+    else:
+        print(f"Data quality check passed for table {column} with {total_count} records.")

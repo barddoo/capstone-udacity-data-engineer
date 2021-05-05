@@ -1,21 +1,13 @@
 import os
 
-import configparser
 from pyspark.sql import SparkSession
 
 import etl_functions
-
-config = configparser.ConfigParser()
-config.read('config.cfg')
-
-os.environ['AWS_ACCESS_KEY_ID'] = config['AWS']['AWS_ACCESS_KEY_ID']
-os.environ['AWS_SECRET_ACCESS_KEY'] = config['AWS']['AWS_SECRET_ACCESS_KEY']
 
 
 def create_spark_session():
     spark = SparkSession \
         .builder \
-        .config("spark.jars.packages", "org.apache.hadoop:hadoop-aws:3.3.0") \
         .getOrCreate()
 
     return spark
@@ -29,7 +21,7 @@ def process_economy_data(spark, output_data):
     :return: spark dataframe representing economy table
     """
 
-    economy_df = etl_functions.create_economy_pandas()
+    economy_df = etl_functions.create_economy_df()
     economy_df = spark.createDataFrame(economy_df)
     return etl_functions.create_economy_table(economy_df, output_data)
 
@@ -45,8 +37,8 @@ def process_trading_data(spark, trading_files, output_data):
 
     trading_df = spark.read.text(paths=trading_files)
 
-    trading_df = etl_functions.raw_trading_to_pandas(trading_df)
-    trading_df = etl_functions.trading_pandas_to_spark(spark, trading_df)
+    trading_df = etl_functions.raw_trading_to_spark(trading_df)
+    trading_df = etl_functions.trading_columns(trading_df)
 
     return etl_functions.create_trading_table(trading_df, output_data)
 
